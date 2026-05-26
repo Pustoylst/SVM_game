@@ -102,7 +102,7 @@ class GameRenderer:
     
     def draw_title(self):
         """Отрисовать заголовок игры"""
-        title_text = "Mizzz Bloxxxxx - Battle"
+        title_text = "SVM BATTLE"
         title_surface = font.render(title_text, True, (255, 255, 255))
         title_shadow = font.render(title_text, True, (0, 0, 0))
         title_rect = title_surface.get_rect(center=(SCREEN_WIDTH // 2, 50))
