@@ -119,7 +119,7 @@ class Character:
     def _load_image_if_exists(self):
         """Попытаться загрузить изображение персонажа из папки data/ (hero/boss либо имя)."""
         from pathlib import Path
-        data_dir = Path('data')
+        data_dir = Path('SVM_game/data')
         if not data_dir.exists():
             return
         name_variants = []
