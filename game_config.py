@@ -108,8 +108,57 @@ CHARACTER_BG_COLOR = (30, 30, 30)
 CHARACTER_BORDER_COLOR = (150, 150, 150)
 
 # Директория данных
-DATA_DIR = 'data'
+DATA_DIR = 'SVM_game/data'
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 
 TOP5_FILE = os.path.join(DATA_DIR, 'top5.txt')
+
+# Громкость фоновой музыки: 0.0 = тишина, 1.0 = максимум
+MUSIC_VOLUME = 0.2
+
+
+def _find_main_theme_path():
+    """Найти основной музыкальный трек в data/."""
+    preferred_names = [
+        'Mortal_Kombat_1995_OST_-_Main_Theme_(SkySound.cc).mp3',
+        'Mortal_Kombat.mp3',
+        'mortal_kombat.mp3',
+    ]
+    for file_name in preferred_names:
+        candidate = os.path.join(DATA_DIR, file_name)
+        if os.path.isfile(candidate):
+            return candidate
+
+    for file_name in sorted(os.listdir(DATA_DIR)):
+        lower_name = file_name.lower()
+        if lower_name.startswith('mortal') and lower_name.endswith('.mp3'):
+            return os.path.join(DATA_DIR, file_name)
+
+    return None
+
+
+MAIN_THEME_FILE = _find_main_theme_path()
+
+
+def play_main_theme(loop=True):
+    """Запустить главную музыкальную тему, если она найдена."""
+    if MAIN_THEME_FILE and os.path.isfile(MAIN_THEME_FILE):
+        pygame.mixer.music.load(MAIN_THEME_FILE)
+        pygame.mixer.music.set_volume(MUSIC_VOLUME)
+        pygame.mixer.music.play(-1 if loop else 0)
+
+
+def toggle_music():
+    """Включить или выключить фоновую музыку."""
+    if pygame.mixer.music.get_busy():
+        pygame.mixer.music.pause()
+    else:
+        if MAIN_THEME_FILE and os.path.isfile(MAIN_THEME_FILE):
+            if pygame.mixer.music.get_pos() == -1:
+                pygame.mixer.music.load(MAIN_THEME_FILE)
+                pygame.mixer.music.set_volume(MUSIC_VOLUME)
+                pygame.mixer.music.play(-1)
+            else:
+                pygame.mixer.music.set_volume(MUSIC_VOLUME)
+                pygame.mixer.music.unpause()

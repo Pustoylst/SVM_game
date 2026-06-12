@@ -1,4 +1,5 @@
 """Отрисовка пользовательского интерфейса"""
+import time
 import pygame
 from game_config import (
     screen, SCREEN_WIDTH, SCREEN_HEIGHT, BOARD_OFFSET_X, BOARD_OFFSET_Y,
@@ -22,7 +23,42 @@ class GameRenderer:
         self.create_grid_lines_surface()
         self.block_images = []
         self.background_image = None
+        self.hint_move = None
+        self.hint_until = 0.0
+        self.help_used = False
         self.load_resources()
+
+    def show_hint(self, move, duration=3.0):
+        """Показать визуальную подсказку для хода."""
+        self.hint_move = move
+        self.hint_until = time.time() + duration
+
+    def clear_hint(self):
+        """Скрыть подсказку."""
+        self.hint_move = None
+        self.hint_until = 0.0
+
+    def set_help_used(self, used=True):
+        """Отметить кнопку Help как использованную."""
+        self.help_used = used
+
+    def get_button_at_position(self, mouse_pos):
+        """Вернуть индекс кнопки, если клик был по панели кнопок."""
+        x, y = mouse_pos
+        if x < BUTTON_OFFSET_X or x > BUTTON_OFFSET_X + BUTTON_WIDTH:
+            return None
+
+        button_data = ["Tip", "Help", "Music", "Scores"]
+        for idx in range(len(button_data)):
+            button_y = BUTTON_OFFSET_Y + idx * (BUTTON_HEIGHT + BUTTON_SPACING)
+            button_rect = pygame.Rect(BUTTON_OFFSET_X, button_y, BUTTON_WIDTH, BUTTON_HEIGHT)
+            if button_rect.collidepoint(x, y):
+                return idx
+        return None
+
+    def is_help_button(self, mouse_pos):
+        """Проверить, нажата ли кнопка Help."""
+        return self.get_button_at_position(mouse_pos) == 1
         
     def create_grid_lines_surface(self):
         """Создать поверхность с линиями сетки"""
@@ -91,6 +127,40 @@ class GameRenderer:
         
         # Нарисовать сетку
         screen.blit(self.grid_lines_surface, (BOARD_OFFSET_X, BOARD_OFFSET_Y))
+
+    def draw_hint_overlay(self):
+        """Подсветить блоки для подсказки без текста."""
+        if not self.hint_move or time.time() > self.hint_until:
+            return
+
+        start, end = self.hint_move
+        pulse = 0.5 + 0.5 * (time.time() * 4 % 1)
+        alpha = int(100 + 100 * pulse)
+
+        overlay = pygame.Surface((BOARD_WIDTH, BOARD_HEIGHT), pygame.SRCALPHA)
+
+        for cell, fill_color, border_color, border_width in (
+            (start, (0, 255, 120, alpha), (255, 255, 255, 240), 4),
+            (end, (255, 220, 0, alpha), (255, 255, 255, 240), 5),
+        ):
+            y, x = cell
+            rect = pygame.Rect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE)
+            pygame.draw.rect(overlay, fill_color, rect)
+            pygame.draw.rect(overlay, border_color, rect, border_width)
+
+        start_center = (
+            start[1] * BLOCK_SIZE + BLOCK_SIZE // 2,
+            start[0] * BLOCK_SIZE + BLOCK_SIZE // 2,
+        )
+        end_center = (
+            end[1] * BLOCK_SIZE + BLOCK_SIZE // 2,
+            end[0] * BLOCK_SIZE + BLOCK_SIZE // 2,
+        )
+        pygame.draw.line(overlay, (255, 255, 255, 220), start_center, end_center, 6)
+        pygame.draw.circle(overlay, (255, 255, 255, 220), start_center, 10)
+        pygame.draw.circle(overlay, (255, 255, 255, 220), end_center, 10)
+
+        screen.blit(overlay, (BOARD_OFFSET_X, BOARD_OFFSET_Y))
     
     def draw_battle_info(self):
         """Отрисовать информацию о боевых действиях"""
@@ -111,14 +181,33 @@ class GameRenderer:
         shadow_rect.y += 2
         screen.blit(title_shadow, shadow_rect)
         screen.blit(title_surface, title_rect)
+
+    def draw_status_message(self):
+        """Отрисовать временное сообщение в верхней части экрана."""
+        if not self.status_message or time.time() > self.status_message_until:
+            return
+
+        message_surface = button_font.render(self.status_message, True, (255, 255, 255))
+        message_rect = message_surface.get_rect(center=(SCREEN_WIDTH // 2, 86))
+        background_rect = message_rect.inflate(24, 16)
+
+        background_surface = pygame.Surface(background_rect.size, pygame.SRCALPHA)
+        background_surface.fill((0, 0, 0, 170))
+        screen.blit(background_surface, background_rect)
+        pygame.draw.rect(screen, (220, 220, 220), background_rect, 2, border_radius=8)
+        screen.blit(message_surface, message_rect)
     
     def draw_game(self):
         """Главная функция отрисовки всей игры"""
         screen.fill(BACKGROUND_COLOR)
+
+        if self.hint_move and time.time() > self.hint_until:
+            self.clear_hint()
         
         # Рисуем компоненты в правильном порядке
         self.draw_title()
         self.draw_grid()
+        self.draw_hint_overlay()
         self.player.draw()
         self.boss.draw()
         self.draw_battle_info()
@@ -138,9 +227,15 @@ class GameRenderer:
         for label, idx in button_data:
             button_y = BUTTON_OFFSET_Y + idx * (BUTTON_HEIGHT + BUTTON_SPACING)
             button_rect = pygame.Rect(BUTTON_OFFSET_X, button_y, BUTTON_WIDTH, BUTTON_HEIGHT)
-            pygame.draw.rect(screen, (50, 50, 50), button_rect)
-            pygame.draw.rect(screen, (200, 200, 200), button_rect, 2)
-            text_surface = button_font.render(label, True, (255, 255, 255))
+            is_help_used = label == "Help" and self.help_used
+            button_color = (45, 45, 45) if not is_help_used else (70, 70, 70)
+            border_color = (200, 200, 200) if not is_help_used else (120, 120, 120)
+            text_label = label if not is_help_used else "Help (used)"
+            text_color = (255, 255, 255) if not is_help_used else (180, 180, 180)
+
+            pygame.draw.rect(screen, button_color, button_rect)
+            pygame.draw.rect(screen, border_color, button_rect, 2)
+            text_surface = button_font.render(text_label, True, text_color)
             text_rect = text_surface.get_rect(center=button_rect.center)
             screen.blit(text_surface, text_rect)
 

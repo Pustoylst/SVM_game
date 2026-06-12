@@ -2,7 +2,7 @@
 import pygame
 import sys
 import time
-from game_config import screen, clock, SCREEN_HEIGHT, SCREEN_WIDTH
+from game_config import screen, clock, SCREEN_HEIGHT, SCREEN_WIDTH, play_main_theme, toggle_music
 from game_logic import GameBoard
 from character import Player, Boss
 from ui import GameRenderer, get_block_at_position
@@ -21,9 +21,43 @@ class BattleGame:
         self.start_time = time.time()
         self.selected_block = None
         self.animation_in_progress = False
+        self.music_on = False
+        self.help_used = False
+        self.start_music()
+
+    def start_music(self):
+        """Запустить главную тему при старте игры."""
+        try:
+            play_main_theme(loop=True)
+            self.music_on = True
+        except Exception:
+            self.music_on = False
         
     def handle_click(self, pos):
         """Обработать клик мыши"""
+        if self.renderer.is_help_button(pos):
+            if self.help_used:
+                self.renderer.clear_hint()
+                return
+
+            move = self.board.find_possible_move()
+            if move:
+                self.renderer.show_hint(move)
+                self.player.take_damage(999)
+                self.help_used = True
+                self.renderer.set_help_used(True)
+            else:
+                self.renderer.clear_hint()
+            return
+
+        if self.renderer.get_button_at_position(pos) == 2:
+            try:
+                toggle_music()
+                self.music_on = not self.music_on
+            except Exception:
+                self.music_on = False
+            return
+
         block = get_block_at_position(pos)
         if block is None:
             self.selected_block = None
@@ -104,11 +138,13 @@ class BattleGame:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
-                elif event.key == pygame.K_t:
-                    # T - показать подсказку
+                elif event.key in (pygame.K_j, pygame.K_t):
+                    # J/T - показать подсказку
                     move = self.board.find_possible_move()
                     if move:
-                        print(f"Tip: Try swapping {move[0]} with {move[1]}")
+                        self.renderer.show_hint(move)
+                    else:
+                        self.renderer.clear_hint()
     
     def run(self):
         """Главный цикл игры"""
