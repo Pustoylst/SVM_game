@@ -108,7 +108,8 @@ CHARACTER_BG_COLOR = (30, 30, 30)
 CHARACTER_BORDER_COLOR = (150, 150, 150)
 
 # Директория данных
-DATA_DIR = 'SVM_game/data'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 

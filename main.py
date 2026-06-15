@@ -2,7 +2,7 @@
 import pygame
 import sys
 import time
-from game_config import screen, clock, SCREEN_HEIGHT, SCREEN_WIDTH, play_main_theme, toggle_music, button_font, font
+from game_config import screen, clock, SCREEN_HEIGHT, SCREEN_WIDTH, play_main_theme, toggle_music, button_font, font, counter_font
 from game_logic import GameBoard
 from character import Player, Boss
 from ui import GameRenderer, get_block_at_position
@@ -271,9 +271,119 @@ def main():
             pygame.display.flip()
             clock.tick(30)
 
+    def show_story_intro():
+        story_text = (
+            "Ты пришёл на экзамен к преподавателю, и никто не знает его настоящего имени. "
+            "Но ты дал ему имя Марвин. Этот преподаватель ставит тебе 0 баллов за любую оплошность. "
+            "И вот ты тянешь билет — на нём написано: 3 в ряд. Ты ничего не понимаешь, "
+            "но преподаватель лишь усмехается и говорит: если сможешь победить меня в этой игре, "
+            "то получишь 100 баллов. Но всё оказалось не так просто..."
+        )
+
+        def wrap_text(s, max_width, render_font):
+            words = s.split(' ')
+            lines = []
+            cur = ''
+            for w in words:
+                test = (cur + ' ' + w).strip()
+                if render_font.size(test)[0] <= max_width:
+                    cur = test
+                else:
+                    if cur:
+                        lines.append(cur)
+                    cur = w
+            if cur:
+                lines.append(cur)
+            return lines
+
+        panel_margin = 40
+        panel_h = max(220, SCREEN_HEIGHT // 3)
+        panel_rect = pygame.Rect(
+            40,
+            SCREEN_HEIGHT - panel_h - 40,
+            SCREEN_WIDTH - 80,
+            panel_h,
+        )
+
+        lines = wrap_text(story_text, panel_rect.width - panel_margin * 2, counter_font)
+        full_text = '\n'.join(lines)
+        typed_chars = 0
+        chars_per_second = 45
+        finished_at = None
+        waiting_for_click = False
+
+        running = True
+        while running:
+            dt = clock.tick(60) / 1000.0
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    pygame.quit()
+                    sys.exit()
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and waiting_for_click and typed_chars >= len(full_text):
+                    return
+
+            if typed_chars < len(full_text):
+                typed_chars = min(len(full_text), typed_chars + max(1, int(chars_per_second * dt)))
+                if typed_chars >= len(full_text):
+                    finished_at = time.time()
+                    waiting_for_click = True
+            elif finished_at is None:
+                finished_at = time.time()
+                waiting_for_click = True
+
+            visible_text = full_text[:typed_chars]
+            visible_lines = visible_text.split('\n')
+
+            screen.fill((0, 0, 0))
+
+            # Subtle atmosphere for the intro
+            glow = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            pygame.draw.circle(glow, (80, 30, 100, 50), (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2), SCREEN_HEIGHT // 3)
+            screen.blit(glow, (0, 0))
+
+            panel_surf = pygame.Surface(panel_rect.size, pygame.SRCALPHA)
+            panel_surf.fill((10, 10, 12, 235))
+            pygame.draw.rect(panel_surf, (255, 255, 255), panel_surf.get_rect(), 2, border_radius=14)
+
+            title_surf = font.render("СЮЖЕТ", True, (255, 230, 120))
+            panel_surf.blit(title_surf, title_surf.get_rect(center=(panel_rect.width // 2, 32)))
+
+            y = 72
+            left = panel_margin
+            for line in visible_lines:
+                if line:
+                    text_surf = counter_font.render(line, True, (230, 230, 230))
+                    panel_surf.blit(text_surf, (left, y))
+                    y += text_surf.get_height() + 8
+                else:
+                    y += 18
+
+            cursor_blink = int(time.time() * 2) % 2 == 0
+            if cursor_blink and typed_chars < len(full_text):
+                cursor_surf = counter_font.render("_", True, (255, 255, 255))
+                panel_surf.blit(cursor_surf, (left + 10, min(y, panel_rect.height - 40)))
+
+            if typed_chars < len(full_text):
+                prompt_text = "Текст печатается..."
+            else:
+                prompt_text = "Левой кнопкой мыши продолжить"
+            prompt_surf = button_font.render(prompt_text, True, (180, 180, 180))
+            prompt_rect = prompt_surf.get_rect(center=(panel_rect.width // 2, panel_rect.height - 28))
+            panel_surf.blit(prompt_surf, prompt_rect)
+
+            screen.blit(panel_surf, panel_rect.topleft)
+            pygame.display.flip()
+
+    
+
     show_disclaimer()
     start = show_main_menu()
     if start:
+        show_story_intro()
         game = BattleGame()
         game.run()
 
