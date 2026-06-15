@@ -2,7 +2,7 @@
 import pygame
 import sys
 import time
-from game_config import screen, clock, SCREEN_HEIGHT, SCREEN_WIDTH, play_main_theme, toggle_music
+from game_config import screen, clock, SCREEN_HEIGHT, SCREEN_WIDTH, play_main_theme, toggle_music, button_font, font
 from game_logic import GameBoard
 from character import Player, Boss
 from ui import GameRenderer, get_block_at_position
@@ -166,9 +166,116 @@ class BattleGame:
 
 
 def main():
-    """Точка входа"""
-    game = BattleGame()
-    game.run()
+    """Точка входа: показать дисклеймер, меню, затем игру"""
+    pygame.init()
+
+    def show_disclaimer():
+        text = (
+            "Все совпадения лиц, имён, событий и прочих элементов с реальными людьми "
+            "или обстоятельствами являются чистой случайностью. Любые сходства не "
+            "преднамеренны — за всё отвечает генеративный ИИ, а авторы не имеют к этому отношения."
+        )
+        hint = "Нажмите любую клавишу или кликните, чтобы продолжить"
+
+        def wrap_text(s, max_width, render_font):
+            words = s.split(' ')
+            lines = []
+            cur = ''
+            for w in words:
+                test = (cur + ' ' + w).strip()
+                if render_font.size(test)[0] <= max_width:
+                    cur = test
+                else:
+                    lines.append(cur)
+                    cur = w
+            if cur:
+                lines.append(cur)
+            return lines
+
+        # Centered text drawing helper
+        def draw_centered_line(surface, text, render_font, x, y, max_width, color=(220,220,220)):
+            surf = render_font.render(text, True, color)
+            rect = surf.get_rect(center=(x + max_width // 2, y + surf.get_height() // 2))
+            surface.blit(surf, rect)
+            return surf.get_height()
+
+        panel_w = min(900, SCREEN_WIDTH - 200)
+        panel_h = min(420, SCREEN_HEIGHT - 200)
+        panel_x = (SCREEN_WIDTH - panel_w) // 2
+        panel_y = (SCREEN_HEIGHT - panel_h) // 2
+
+        lines = wrap_text(text, panel_w - 80, font)
+
+        running = True
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                    running = False
+
+            # Dim background
+            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 180))
+            screen.blit(overlay, (0, 0))
+
+            # Panel
+            panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
+            panel_surf = pygame.Surface(panel_rect.size, pygame.SRCALPHA)
+            panel_surf.fill((18, 18, 18, 240))
+            pygame.draw.rect(panel_surf, (255, 255, 255), panel_surf.get_rect(), 2, border_radius=12)
+
+            # Title
+            title_surf = font.render("Дисклеймер", True, (255, 230, 120))
+            panel_surf.blit(title_surf, title_surf.get_rect(center=(panel_w // 2, 48)))
+
+            # Body (centered)
+            y = 100
+            text_x = 40
+            text_width = panel_w - 80
+            for line in lines:
+                h = draw_centered_line(panel_surf, line, button_font, text_x, y, text_width)
+                y += h + 8
+
+            # Hint
+            hint_surf = button_font.render(hint, True, (180, 180, 180))
+            hint_rect = hint_surf.get_rect(center=(panel_w // 2, panel_h - 48))
+            panel_surf.blit(hint_surf, hint_rect)
+
+            screen.blit(panel_surf, panel_rect.topleft)
+            pygame.display.flip()
+            clock.tick(30)
+
+    def show_main_menu():
+        play_rect = pygame.Rect(0, 0, 220, 64)
+        play_rect.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if play_rect.collidepoint(event.pos):
+                        return True
+
+            screen.fill((0, 0, 0))
+            title_surf = font.render("SVM BATTLE", True, (255, 255, 255))
+            screen.blit(title_surf, title_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 120)))
+
+            pygame.draw.rect(screen, (50, 50, 50), play_rect)
+            pygame.draw.rect(screen, (200, 200, 200), play_rect, 2)
+            text_surface = button_font.render("Play", True, (255, 255, 255))
+            screen.blit(text_surface, text_surface.get_rect(center=play_rect.center))
+
+            pygame.display.flip()
+            clock.tick(30)
+
+    show_disclaimer()
+    start = show_main_menu()
+    if start:
+        game = BattleGame()
+        game.run()
 
 
 if __name__ == "__main__":
