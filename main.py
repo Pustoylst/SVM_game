@@ -2,7 +2,9 @@
 import pygame
 import sys
 import time
+import os
 from game_config import screen, clock, SCREEN_HEIGHT, SCREEN_WIDTH, play_main_theme, toggle_music, button_font, font, counter_font
+from game_config import DATA_DIR
 from game_logic import GameBoard
 from character import Player, Boss
 from ui import GameRenderer, get_block_at_position
@@ -35,7 +37,9 @@ class BattleGame:
         
     def handle_click(self, pos):
         """Обработать клик мыши"""
-        if self.renderer.is_help_button(pos):
+        button_index = self.renderer.get_button_at_position(pos)
+
+        if button_index == 1:
             if self.help_used:
                 self.renderer.clear_hint()
                 return
@@ -50,7 +54,7 @@ class BattleGame:
                 self.renderer.clear_hint()
             return
 
-        if self.renderer.get_button_at_position(pos) == 2:
+        if button_index == 2:
             try:
                 toggle_music()
                 self.music_on = not self.music_on
@@ -173,7 +177,7 @@ def main():
         text = (
             "Все совпадения лиц, имён, событий и прочих элементов с реальными людьми "
             "или обстоятельствами являются чистой случайностью. Любые сходства не "
-            "преднамеренны — за всё отвечает генеративный ИИ, а авторы не имеют к этому отношения."
+            "преднамеренны и автор не имеют к этому отношения."
         )
         hint = "Нажмите любую клавишу или кликните, чтобы продолжить"
 
@@ -248,6 +252,15 @@ def main():
             clock.tick(30)
 
     def show_main_menu():
+        play_click_sound = None
+        try:
+            play_sound_path = os.path.join(DATA_DIR, 'sound1.wav')
+            if os.path.isfile(play_sound_path):
+                play_click_sound = pygame.mixer.Sound(play_sound_path)
+                play_click_sound.set_volume(0.1)
+        except Exception:
+            play_click_sound = None
+
         play_rect = pygame.Rect(0, 0, 220, 64)
         play_rect.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
         while True:
@@ -257,6 +270,11 @@ def main():
                     sys.exit()
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if play_rect.collidepoint(event.pos):
+                        if play_click_sound is not None:
+                            try:
+                                play_click_sound.play()
+                            except Exception:
+                                pass
                         return True
 
             screen.fill((0, 0, 0))

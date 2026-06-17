@@ -1,5 +1,6 @@
 """Отрисовка пользовательского интерфейса"""
 import time
+import random
 import pygame
 from game_config import (
     screen, SCREEN_WIDTH, SCREEN_HEIGHT, BOARD_OFFSET_X, BOARD_OFFSET_Y,
@@ -26,6 +27,18 @@ class GameRenderer:
         self.hint_move = None
         self.hint_until = 0.0
         self.help_used = False
+        self.boss_phrase = None
+        self.boss_phrase_until = 0.0
+        self.last_boss_phrase_time = time.time()
+        self.last_boss_phrase_text = None
+        self.boss_phrases = [
+            "Избегайте двусмысленности",
+            "Я гроза гаджетников",
+            "Что, опять неудача?",
+            "У вас нет ничего предосудительного?",
+        ]
+        self.status_message = None
+        self.status_message_until = 0.0
         self.load_resources()
 
     def show_hint(self, move, duration=3.0):
@@ -161,6 +174,48 @@ class GameRenderer:
         pygame.draw.circle(overlay, (255, 255, 255, 220), end_center, 10)
 
         screen.blit(overlay, (BOARD_OFFSET_X, BOARD_OFFSET_Y))
+
+    def draw_boss_phrase(self):
+        """Показать облачко фразы босса над его панелью."""
+        if not self.boss or not hasattr(self.boss, 'rect'):
+            return
+        now = time.time()
+        # schedule phrase every 10s
+        if now - self.last_boss_phrase_time >= 10 and now > self.boss_phrase_until:
+            available_phrases = [p for p in self.boss_phrases if p != self.last_boss_phrase_text]
+            if not available_phrases:
+                available_phrases = self.boss_phrases[:]
+            self.boss_phrase = random.choice(available_phrases)
+            self.last_boss_phrase_text = self.boss_phrase
+            self.boss_phrase_until = now + 3.0
+            self.last_boss_phrase_time = now
+
+        if not self.boss_phrase or now > self.boss_phrase_until:
+            return
+
+        # render bubble
+        text_surf = button_font.render(self.boss_phrase, True, (20, 20, 20))
+        pad = 10
+        w = text_surf.get_width() + pad * 2
+        h = text_surf.get_height() + pad * 2
+
+        # position centered above boss panel
+        bx = self.boss.rect.x + (self.boss.rect.width - w) // 2
+        by = max(8, self.boss.rect.y - h - 12)
+
+        bubble = pygame.Surface((w, h), pygame.SRCALPHA)
+        bubble.fill((255, 255, 255, 240))
+        pygame.draw.rect(bubble, (120, 120, 120), bubble.get_rect(), 2, border_radius=8)
+        bubble.blit(text_surf, (pad, pad))
+
+        screen.blit(bubble, (bx, by))
+
+        # pointer triangle
+        pointer_cx = bx + w // 2
+        p_top = by + h
+        p = [(pointer_cx - 8, p_top), (pointer_cx + 8, p_top), (pointer_cx, p_top + 10)]
+        pygame.draw.polygon(screen, (255, 255, 255), p)
+        pygame.draw.polygon(screen, (120, 120, 120), p, 1)
     
     def draw_battle_info(self):
         """Отрисовать информацию о боевых действиях"""
@@ -206,10 +261,12 @@ class GameRenderer:
         
         # Рисуем компоненты в правильном порядке
         self.draw_title()
+        self.draw_status_message()
         self.draw_grid()
         self.draw_hint_overlay()
         self.player.draw()
         self.boss.draw()
+        self.draw_boss_phrase()
         self.draw_battle_info()
         self.draw_buttons()
         
