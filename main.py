@@ -3,6 +3,7 @@ import pygame
 import sys
 import time
 import os
+import random
 from game_config import screen, clock, SCREEN_HEIGHT, SCREEN_WIDTH, play_main_theme, toggle_music, button_font, font, counter_font
 from game_config import DATA_DIR
 from game_logic import GameBoard
@@ -25,6 +26,15 @@ class BattleGame:
         self.animation_in_progress = False
         self.music_on = False
         self.help_used = False
+        self.quiz_active = False
+        self.quiz_question = None
+        self.quiz_options = []
+        self.quiz_correct_index = -1
+        self.quiz_deadline = 0.0
+        self.next_quiz_time = time.time() + random.randint(12, 22)
+        self.game_over = False
+        self.game_over_reason = ""
+        self.restart_button_rect = pygame.Rect(0, 0, 260, 64)
         self.start_music()
 
     def start_music(self):
@@ -37,6 +47,15 @@ class BattleGame:
         
     def handle_click(self, pos):
         """Обработать клик мыши"""
+        if self.game_over:
+            if self.restart_button_rect.collidepoint(pos):
+                self.reset_game()
+            return
+
+        if self.quiz_active:
+            self.handle_quiz_click(pos)
+            return
+
         button_index = self.renderer.get_button_at_position(pos)
 
         if button_index == 1:
@@ -67,7 +86,7 @@ class BattleGame:
             self.selected_block = None
             self.renderer.selected_block = None
             return
-        
+
         if self.selected_block is None:
             # Выбрали первый блок
             self.selected_block = block
@@ -76,15 +95,189 @@ class BattleGame:
             # Выбрали второй блок
             y1, x1 = self.selected_block
             y2, x2 = block
-            
+
             # Проверить, соседние ли блоки
             if abs(y1 - y2) + abs(x1 - x2) == 1:
                 # Попытаться поменять блоки
                 self.try_swap(self.selected_block, block)
-            
+
             # Сбросить выделение
             self.selected_block = None
             self.renderer.selected_block = None
+
+    def generate_quiz(self):
+        """Сгенерировать простой вопрос с тремя вариантами ответа."""
+        quiz_bank = [
+            {
+                "question": "Интеграл: int 1 dx = ?",
+                "options": ["x + C", "x^2 + C", "1/x + C"],
+                "correct": 0,
+            },
+            {
+                "question": "Интеграл: int x dx = ?",
+                "options": ["x^2 + C", "x^2 / 2 + C", "2x + C"],
+                "correct": 1,
+            },
+            {
+                "question": "Интеграл: int 2x dx = ?",
+                "options": ["x^2 + C", "2x^2 + C", "x + C"],
+                "correct": 0,
+            },
+            {
+                "question": "Интеграл: int 0 dx = ?",
+                "options": ["0", "x + C", "C"],
+                "correct": 2,
+            },
+            {
+                "question": "Интеграл: int x^2 dx = ?",
+                "options": ["x^3 / 3 + C", "x^2 / 3 + C", "3x^2 + C"],
+                "correct": 0,
+            },
+            {
+                "question": "Интеграл: int 3 dx = ?",
+                "options": ["3x + C", "x^3 + C", "x / 3 + C"],
+                "correct": 0,
+            },
+            {
+                "question": "Посчитай: \u221a121 = ?",
+                "options": ["10", "11", "12"],
+                "correct": 1,
+            },
+            {
+                "question": "Посчитай: \u221a144 = ?",
+                "options": ["11", "12", "13"],
+                "correct": 1,
+            },
+            {
+                "question": "Посчитай: \u221a169 = ?",
+                "options": ["12", "13", "14"],
+                "correct": 1,
+            },
+            {
+                "question": "Посчитай: \u221a196 = ?",
+                "options": ["13", "14", "15"],
+                "correct": 1,
+            },
+            {
+                "question": "Посчитай: \u221a225 = ?",
+                "options": ["14", "15", "16"],
+                "correct": 1,
+            },
+            {
+                "question": "Посчитай: \u221a256 = ?",
+                "options": ["15", "16", "17"],
+                "correct": 1,
+            },
+            {
+                "question": "Предел: lim x->0 sin(x) / x = ?",
+                "options": ["0", "1", "-1"],
+                "correct": 1,
+            },
+            {
+                "question": "Предел: lim x->1 (x^2 - 1) / (x - 1) = ?",
+                "options": ["1", "2", "3"],
+                "correct": 1,
+            },
+            {
+                "question": "Предел: lim x->0 (1 - cos(x)) / x^2 = ?",
+                "options": ["0", "1/2", "1"],
+                "correct": 1,
+            },
+            {
+                "question": "Предел: lim x->0 (e^x - 1) / x = ?",
+                "options": ["0", "1", "e"],
+                "correct": 1,
+            },
+            {
+                "question": "Предел: lim x->2 (x^2 - 4) / (x - 2) = ?",
+                "options": ["2", "4", "6"],
+                "correct": 2,
+            },
+            {
+                "question": "Предел: lim x->0 \u221a(1 + x) = ?",
+                "options": ["0", "1", "2"],
+                "correct": 1,
+            },
+            {
+                "question": "Предел: lim x->0 (x^2 + 3x) / x = ?",
+                "options": ["3", "4", "0"],
+                "correct": 0,
+            },
+            {
+                "question": "Предел: lim x->0 (sin(2x) / x) = ?",
+                "options": ["1", "2", "4"],
+                "correct": 1,
+            },
+        ]
+        return random.choice(quiz_bank)
+
+    def start_quiz(self):
+        """Запустить математический вопрос."""
+        quiz = self.generate_quiz()
+        self.quiz_question = quiz["question"]
+        self.quiz_options = quiz["options"]
+        self.quiz_correct_index = quiz["correct"]
+        self.quiz_deadline = time.time() + 10.0
+        self.quiz_active = True
+
+    def fail_game(self, reason):
+        """Завершить игру поражением."""
+        self.game_over = True
+        self.game_over_reason = reason
+        self.quiz_active = False
+        self.quiz_question = None
+        self.quiz_options = []
+        self.quiz_correct_index = -1
+        self.quiz_deadline = 0.0
+        self.selected_block = None
+        self.renderer.selected_block = None
+
+    def reset_game(self):
+        """Перезапустить бой после game over."""
+        self.board = GameBoard()
+        self.player = Player()
+        self.boss = Boss()
+        self.renderer = GameRenderer(self.board, self.player, self.boss)
+        self.selected_block = None
+        self.animation_in_progress = False
+        self.music_on = False
+        self.help_used = False
+        self.quiz_active = False
+        self.quiz_question = None
+        self.quiz_options = []
+        self.quiz_correct_index = -1
+        self.quiz_deadline = 0.0
+        self.next_quiz_time = time.time() + random.randint(12, 22)
+        self.game_over = False
+        self.game_over_reason = ""
+        self.start_time = time.time()
+        self.start_music()
+
+    def handle_quiz_click(self, pos):
+        """Обработать клик по вариантам ответа."""
+        if not self.quiz_active or self.quiz_question is None:
+            return
+
+        option_y = SCREEN_HEIGHT // 2 - 10
+        option_w = 280
+        option_h = 56
+        option_spacing = 18
+        total_w = option_w * 3 + option_spacing * 2
+        start_x = (SCREEN_WIDTH - total_w) // 2
+
+        for index in range(3):
+            rect = pygame.Rect(start_x + index * (option_w + option_spacing), option_y, option_w, option_h)
+            if rect.collidepoint(pos):
+                if index == self.quiz_correct_index:
+                    self.quiz_active = False
+                    self.quiz_question = None
+                    self.quiz_options = []
+                    self.quiz_correct_index = -1
+                    self.quiz_deadline = 0.0
+                    self.next_quiz_time = time.time() + random.randint(15, 30)
+                else:
+                    self.fail_game("Неверный ответ")
+                return
     
     def try_swap(self, pos1, pos2):
         """Попытаться поменять блоки и найти совпадения"""
@@ -103,6 +296,9 @@ class BattleGame:
     
     def process_matches(self, matches):
         """Обработать найденные совпадения"""
+        if self.quiz_active:
+            return
+
         matches_count = len(matches)
         
         # Убрать совпадённые блоки
@@ -121,6 +317,19 @@ class BattleGame:
     
     def check_game_state(self):
         """Проверить состояние игры"""
+        if self.game_over:
+            return True
+
+        if self.quiz_active:
+            if time.time() > self.quiz_deadline:
+                self.fail_game("Время вышло")
+                return True
+            return True
+
+        if time.time() >= self.next_quiz_time:
+            self.start_quiz()
+            return True
+
         if not self.boss.is_alive():
             print(f"Boss defeated! You won! Time: {time.time() - self.start_time:.2f}s")
             return False
@@ -155,18 +364,102 @@ class BattleGame:
         while self.running:
             self.handle_events()
             
+            if self.game_over:
+                self.draw_game_over_screen()
+                pygame.display.flip()
+                clock.tick(60)
+                continue
+
             # Проверить состояние игры
             if not self.check_game_state():
                 self.running = False
-            
+                continue
+
+            if self.quiz_active:
+                self.draw_quiz_overlay()
+                pygame.display.flip()
+                clock.tick(60)
+                continue
+
             # Отрисовать
             self.renderer.draw_game()
-            
+
+            pygame.display.flip()
+
             # FPS
             clock.tick(60)
         
         pygame.quit()
         sys.exit()
+
+    def draw_quiz_overlay(self):
+        """Нарисовать вопрос и варианты ответа поверх игры."""
+        if not self.quiz_active or self.quiz_question is None:
+            return
+
+        now = time.time()
+        remaining = max(0, int(self.quiz_deadline - now) + (1 if self.quiz_deadline - now > int(self.quiz_deadline - now) else 0))
+
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        screen.blit(overlay, (0, 0))
+
+        panel_w = min(900, SCREEN_WIDTH - 160)
+        panel_h = 320
+        panel_x = (SCREEN_WIDTH - panel_w) // 2
+        panel_y = (SCREEN_HEIGHT - panel_h) // 2 - 40
+        panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
+
+        panel_surf = pygame.Surface(panel_rect.size, pygame.SRCALPHA)
+        panel_surf.fill((18, 18, 18, 245))
+        pygame.draw.rect(panel_surf, (255, 255, 255), panel_surf.get_rect(), 2, border_radius=14)
+
+        title = font.render("Вопрос преподавателя", True, (255, 230, 120))
+        panel_surf.blit(title, title.get_rect(center=(panel_w // 2, 42)))
+
+        question_surf = button_font.render(self.quiz_question, True, (240, 240, 240))
+        panel_surf.blit(question_surf, question_surf.get_rect(center=(panel_w // 2, 110)))
+
+        timer_text = f"Осталось: {remaining} c"
+        timer_surf = button_font.render(timer_text, True, (255, 180, 180))
+        panel_surf.blit(timer_surf, timer_surf.get_rect(center=(panel_w // 2, 150)))
+
+        option_w = 280
+        option_h = 56
+        option_spacing = 18
+        total_w = option_w * 3 + option_spacing * 2
+        start_x = (panel_w - total_w) // 2
+        option_y = 200
+
+        for index, option_text in enumerate(self.quiz_options):
+            rect = pygame.Rect(start_x + index * (option_w + option_spacing), option_y, option_w, option_h)
+            pygame.draw.rect(panel_surf, (42, 42, 42), rect, border_radius=10)
+            pygame.draw.rect(panel_surf, (200, 200, 200), rect, 2, border_radius=10)
+            option_surf = button_font.render(option_text, True, (255, 255, 255))
+            panel_surf.blit(option_surf, option_surf.get_rect(center=rect.center))
+
+        screen.blit(panel_surf, panel_rect.topleft)
+
+    def draw_game_over_screen(self):
+        """Показать экран поражения."""
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 220))
+        screen.blit(overlay, (0, 0))
+
+        title_surf = font.render("GAME OVER", True, (255, 80, 80))
+        score_surf = font.render("0 баллов", True, (255, 255, 255))
+        reason_surf = button_font.render(self.game_over_reason, True, (220, 220, 220))
+
+        self.restart_button_rect = pygame.Rect(0, 0, 260, 64)
+        self.restart_button_rect.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 140)
+        pygame.draw.rect(screen, (50, 50, 50), self.restart_button_rect, border_radius=12)
+        pygame.draw.rect(screen, (220, 220, 220), self.restart_button_rect, 2, border_radius=12)
+        restart_surf = button_font.render("Начать заново", True, (255, 255, 255))
+        screen.blit(restart_surf, restart_surf.get_rect(center=self.restart_button_rect.center))
+
+        screen.blit(title_surf, title_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 40)))
+        screen.blit(score_surf, score_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 20)))
+        screen.blit(reason_surf, reason_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 70)))
 
 
 def main():
