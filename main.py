@@ -616,6 +616,29 @@ def main():
             panel_h,
         )
 
+        boss_backdrop = Boss()
+
+        def draw_centered_boss_sprite():
+            """Показать босса в центре экрана без боевой панели."""
+            if boss_backdrop.image_original:
+                sprite = boss_backdrop.image_original
+                max_w = int(SCREEN_WIDTH * 0.42)
+                max_h = int(SCREEN_HEIGHT * 0.55)
+                scale = min(max_w / sprite.get_width(), max_h / sprite.get_height())
+                scale = min(scale, 1.0)
+                draw_w = max(1, int(sprite.get_width() * scale))
+                draw_h = max(1, int(sprite.get_height() * scale))
+                rendered = pygame.transform.smoothscale(sprite, (draw_w, draw_h))
+                draw_x = (SCREEN_WIDTH - draw_w) // 2
+                draw_y = (SCREEN_HEIGHT - draw_h) // 2 - 10
+                screen.blit(rendered, (draw_x, draw_y))
+            else:
+                fallback_w = int(SCREEN_WIDTH * 0.22)
+                fallback_h = int(SCREEN_HEIGHT * 0.42)
+                fallback_rect = pygame.Rect(0, 0, fallback_w, fallback_h)
+                fallback_rect.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 10)
+                pygame.draw.rect(screen, boss_backdrop.color, fallback_rect, border_radius=18)
+
         lines = wrap_text(story_text, panel_rect.width - panel_margin * 2, counter_font)
         full_text = '\n'.join(lines)
         typed_chars = 0
@@ -655,6 +678,9 @@ def main():
             glow = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
             pygame.draw.circle(glow, (80, 30, 100, 50), (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2), SCREEN_HEIGHT // 3)
             screen.blit(glow, (0, 0))
+
+            # Boss in the background of the story scene
+            draw_centered_boss_sprite()
 
             panel_surf = pygame.Surface(panel_rect.size, pygame.SRCALPHA)
             panel_surf.fill((10, 10, 12, 235))
