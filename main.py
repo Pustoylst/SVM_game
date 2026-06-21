@@ -11,7 +11,7 @@ from game_logic import GameBoard
 from genetic import heuristic_value, GeneticOptimizer
 from character import Player, Boss
 from ui import GameRenderer, get_block_at_position
-
+import json
 
 class BattleGame:
     """Главный класс игры в режиме боя"""
@@ -40,6 +40,79 @@ class BattleGame:
         self.restart_button_rect = pygame.Rect(0, 0, 260, 64)
         self.start_music()
 
+    def get_scores_file_path(self):
+        return os.path.join(DATA_DIR, 'scores.json')
+
+    def load_scores(self):
+        scores_file = self.get_scores_file_path()
+        if os.path.isfile(scores_file):
+            try:
+                with open(scores_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except:
+                return []
+        return []
+
+    def save_score(self, score, time_spent):
+        scores = self.load_scores()
+        scores.append({'score': score, 'time': time_spent})
+        scores.sort(key=lambda x: x['score'], reverse=True)
+        scores = scores[:10]
+        try:
+            with open(self.get_scores_file_path(), 'w', encoding='utf-8') as f:
+                json.dump(scores, f, ensure_ascii=False, indent=2)
+        except:
+            pass
+    def show_scores_screen(self):
+        """Показать экран с таблицей рекордов."""
+        scores = self.load_scores()
+        
+        # Затемняем фон
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 200))
+        screen.blit(overlay, (0, 0))
+        
+        # Заголовок
+        title = font.render("РЕКОРДЫ", True, (255, 255, 255))
+        screen.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, 100)))
+        
+        # Показываем рекорды
+        y = 180
+        if not scores:
+            text = button_font.render("Нет рекордов", True, (200, 200, 200))
+            screen.blit(text, text.get_rect(center=(SCREEN_WIDTH // 2, y)))
+        else:
+            for i, record in enumerate(scores[:10]):
+                text = f"{i+1}. {record.get('score', 0)} очков - {record.get('time', 0):.1f} сек"
+                surf = button_font.render(text, True, (220, 220, 220))
+                screen.blit(surf, (SCREEN_WIDTH // 2 - surf.get_width() // 2, y))
+                y += 40
+        
+        # Кнопка назад
+        back_rect = pygame.Rect(0, 0, 160, 50)
+        back_rect.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT - 100)
+        pygame.draw.rect(screen, (50, 50, 50), back_rect)
+        pygame.draw.rect(screen, (200, 200, 200), back_rect, 2)
+        back_text = button_font.render("Назад", True, (255, 255, 255))
+        screen.blit(back_text, back_text.get_rect(center=back_rect.center))
+        
+        pygame.display.flip()
+        
+        # Ждем нажатия
+        waiting = True
+        while waiting:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.running = False
+                    return
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if back_rect.collidepoint(event.pos):
+                        waiting = False
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        waiting = False
+            clock.tick(30)
+    
     def start_music(self):
         """Запустить главную тему при старте игры."""
         try:
@@ -66,7 +139,7 @@ class BattleGame:
 
         button_index = self.renderer.get_button_at_position(pos)
 
-        if button_index == 1:
+        if button_index == 0:
             if self.help_used:
                 self.renderer.clear_hint()
                 return
@@ -83,7 +156,7 @@ class BattleGame:
                 self.renderer.clear_hint()
             return
 
-        if button_index == 2:
+        if button_index == 1:
             try:
                 toggle_music()
                 self.music_on = not self.music_on
@@ -91,8 +164,13 @@ class BattleGame:
                 self.music_on = False
             return
 
+        # Show top scores
+        if button_index == 2:
+            self.show_scores_screen()
+            return
+
         # AI / show best move
-        if button_index == 4:
+        if button_index == 3:
             # try load best weights
             try:
                 import os
@@ -377,7 +455,7 @@ class BattleGame:
         print(f"Match! Damage to boss: {damage}, Boss HP: {int(self.boss.hp)}/{int(self.boss.max_hp)}")
     
     def check_game_state(self):
-        """Проверить состояние игры"""
+        
         if self.game_over:
             return True
 
@@ -395,6 +473,9 @@ class BattleGame:
             # Победа над боссом — показать экран победы
             print(f"Boss defeated! You won! Time: {time.time() - self.start_time:.2f}s")
             self.victory = True
+            # СОХРАНЯЕМ РЕКОРД
+            elapsed_time = time.time() - self.start_time
+            self.save_score(100, elapsed_time)
             return True
         
         if not self.board.has_possible_moves():

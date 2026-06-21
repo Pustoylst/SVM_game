@@ -61,7 +61,7 @@ class GameRenderer:
         if x < BUTTON_OFFSET_X or x > BUTTON_OFFSET_X + BUTTON_WIDTH:
             return None
 
-        button_data = ["Tip", "Help", "Music", "Scores", "AI"]
+        button_data = ["Help", "Music", "Scores", "AI"]
         for idx in range(len(button_data)):
             button_y = BUTTON_OFFSET_Y + idx * (BUTTON_HEIGHT + BUTTON_SPACING)
             button_rect = pygame.Rect(BUTTON_OFFSET_X, button_y, BUTTON_WIDTH, BUTTON_HEIGHT)
@@ -275,11 +275,10 @@ class GameRenderer:
     def draw_buttons(self):
         """Отрисовать кнопки"""
         button_data = [
-            ("Tip", 0),
-            ("Help", 1),
-            ("Music", 2),
-            ("Scores", 3),
-            ("AI", 4),
+            ("Help", 0),
+            ("Music", 1),
+            ("Scores", 2),
+            ("AI", 3),
         ]
         
         for label, idx in button_data:
