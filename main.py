@@ -6,7 +6,9 @@ import os
 import random
 from game_config import screen, clock, SCREEN_HEIGHT, SCREEN_WIDTH, play_main_theme, toggle_music, button_font, font, counter_font
 from game_config import DATA_DIR
+import game_config
 from game_logic import GameBoard
+from genetic import heuristic_value, GeneticOptimizer
 from character import Player, Boss
 from ui import GameRenderer, get_block_at_position
 
@@ -33,6 +35,7 @@ class BattleGame:
         self.quiz_deadline = 0.0
         self.next_quiz_time = time.time() + random.randint(12, 22)
         self.game_over = False
+        self.victory = False
         self.game_over_reason = ""
         self.restart_button_rect = pygame.Rect(0, 0, 260, 64)
         self.start_music()
@@ -52,6 +55,11 @@ class BattleGame:
                 self.reset_game()
             return
 
+        if self.victory:
+            if self.restart_button_rect.collidepoint(pos):
+                self.reset_game()
+            return
+
         if self.quiz_active:
             self.handle_quiz_click(pos)
             return
@@ -67,6 +75,8 @@ class BattleGame:
             if move:
                 self.renderer.show_hint(move)
                 self.player.take_damage(999)
+                if not self.player.is_alive():
+                    self.fail_game("HP игрока исчерпано")
                 self.help_used = True
                 self.renderer.set_help_used(True)
             else:
@@ -79,6 +89,49 @@ class BattleGame:
                 self.music_on = not self.music_on
             except Exception:
                 self.music_on = False
+            return
+
+        # AI / show best move
+        if button_index == 4:
+            # try load best weights
+            try:
+                import os
+                path = os.path.join(DATA_DIR, 'best_ga_weights.json')
+                if os.path.isfile(path):
+                    opt = GeneticOptimizer()
+                    chrom, score = opt.load(path)
+                    if chrom is None:
+                        self.renderer.status_message = "No GA weights found"
+                        self.renderer.status_message_until = time.time() + 3.0
+                        return
+                    # find best move according to heuristic
+                    best_move = None
+                    best_value = -1e18
+                    for y in range(len(self.board.grid)):
+                        for x in range(len(self.board.grid[0])):
+                            for dy, dx in [(-1,0),(1,0),(0,-1),(0,1)]:
+                                ny, nx = y+dy, x+dx
+                                if 0 <= ny < len(self.board.grid) and 0 <= nx < len(self.board.grid[0]):
+                                    self.board.swap_blocks((y,x),(ny,nx))
+                                    matches = self.board.find_matches()
+                                    val = heuristic_value(self.board, matches, chrom)
+                                    self.board.swap_blocks((y,x),(ny,nx))
+                                    if val > best_value:
+                                        best_value = val
+                                        best_move = ((y,x),(ny,nx))
+                    if best_move:
+                        self.renderer.show_hint(best_move, duration=6.0)
+                        self.renderer.status_message = "AI: best move shown"
+                        self.renderer.status_message_until = time.time() + 3.0
+                    else:
+                        self.renderer.status_message = "AI: no move found"
+                        self.renderer.status_message_until = time.time() + 3.0
+                else:
+                    self.renderer.status_message = "AI weights not found"
+                    self.renderer.status_message_until = time.time() + 3.0
+            except Exception:
+                self.renderer.status_message = "AI error"
+                self.renderer.status_message_until = time.time() + 3.0
             return
 
         block = get_block_at_position(pos)
@@ -291,8 +344,16 @@ class BattleGame:
             # Есть совпадения! Обрабатываем их
             self.process_matches(matches)
         else:
-            # Нет совпадений, вернуть блоки обратно
+            # Нет совпадений, вернуть блоки обратно и наказать игрока
             self.board.swap_blocks(pos1, pos2)
+            try:
+                self.player.take_damage(500)
+            except Exception:
+                # На случай, если player отсутствует или метод сломан — просто пропустить
+                pass
+            # Если здоровье игрока исчерпано — конец игры
+            if not self.player.is_alive():
+                self.fail_game("HP игрока исчерпано")
     
     def process_matches(self, matches):
         """Обработать найденные совпадения"""
@@ -331,8 +392,10 @@ class BattleGame:
             return True
 
         if not self.boss.is_alive():
+            # Победа над боссом — показать экран победы
             print(f"Boss defeated! You won! Time: {time.time() - self.start_time:.2f}s")
-            return False
+            self.victory = True
+            return True
         
         if not self.board.has_possible_moves():
             print("No more moves available!")
@@ -366,6 +429,12 @@ class BattleGame:
             
             if self.game_over:
                 self.draw_game_over_screen()
+                pygame.display.flip()
+                clock.tick(60)
+                continue
+
+            if self.victory:
+                self.draw_victory_screen()
                 pygame.display.flip()
                 clock.tick(60)
                 continue
@@ -460,6 +529,25 @@ class BattleGame:
         screen.blit(title_surf, title_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 40)))
         screen.blit(score_surf, score_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 20)))
         screen.blit(reason_surf, reason_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 70)))
+
+    def draw_victory_screen(self):
+        """Показать экран победы."""
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 200))
+        screen.blit(overlay, (0, 0))
+
+        title_surf = font.render("ПОБЕДА", True, (120, 255, 120))
+        score_surf = font.render("100 баллов", True, (255, 255, 255))
+
+        self.restart_button_rect = pygame.Rect(0, 0, 260, 64)
+        self.restart_button_rect.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 140)
+        pygame.draw.rect(screen, (50, 50, 50), self.restart_button_rect, border_radius=12)
+        pygame.draw.rect(screen, (220, 220, 220), self.restart_button_rect, 2, border_radius=12)
+        restart_surf = button_font.render("Начать заново", True, (255, 255, 255))
+        screen.blit(restart_surf, restart_surf.get_rect(center=self.restart_button_rect.center))
+
+        screen.blit(title_surf, title_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 40)))
+        screen.blit(score_surf, score_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 20)))
 
 
 def main():
@@ -556,12 +644,25 @@ def main():
 
         play_rect = pygame.Rect(0, 0, 220, 64)
         play_rect.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+
+        # Slider: регулировка громкости музыки (в диапазоне 0.0 - 1.0)
+        slider_track_w = 360
+        slider_track_h = 8
+        slider_x = SCREEN_WIDTH // 2 - slider_track_w // 2
+        slider_y = play_rect.bottom + 100
+        track_rect = pygame.Rect(slider_x, slider_y, slider_track_w, slider_track_h)
+        knob_radius = 12
+        knob_x = slider_x + int(game_config.MUSIC_VOLUME * slider_track_w)
+        knob_y = slider_y + slider_track_h // 2
+        knob_rect = pygame.Rect(knob_x - knob_radius, knob_y - knob_radius, knob_radius * 2, knob_radius * 2)
+        dragging = False
         while True:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    # Play button
                     if play_rect.collidepoint(event.pos):
                         if play_click_sound is not None:
                             try:
@@ -569,6 +670,32 @@ def main():
                             except Exception:
                                 pass
                         return True
+
+                    # Начать перетаскивание/клик по слайдеру
+                    if knob_rect.collidepoint(event.pos) or track_rect.collidepoint(event.pos):
+                        dragging = True
+                        # Обновить громкость сразу при клике
+                        rel_x = max(0, min(event.pos[0] - slider_x, slider_track_w))
+                        new_v = rel_x / float(slider_track_w)
+                        game_config.MUSIC_VOLUME = new_v
+                        try:
+                            pygame.mixer.music.set_volume(new_v)
+                        except Exception:
+                            pass
+                        knob_rect.x = slider_x + int(new_v * slider_track_w) - knob_radius
+
+                if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                    dragging = False
+
+                if event.type == pygame.MOUSEMOTION and dragging:
+                    rel_x = max(0, min(event.pos[0] - slider_x, slider_track_w))
+                    new_v = rel_x / float(slider_track_w)
+                    game_config.MUSIC_VOLUME = new_v
+                    try:
+                        pygame.mixer.music.set_volume(new_v)
+                    except Exception:
+                        pass
+                    knob_rect.x = slider_x + int(new_v * slider_track_w) - knob_radius
 
             screen.fill((0, 0, 0))
             title_surf = font.render("SVM BATTLE", True, (255, 255, 255))
@@ -578,6 +705,23 @@ def main():
             pygame.draw.rect(screen, (200, 200, 200), play_rect, 2)
             text_surface = button_font.render("Play", True, (255, 255, 255))
             screen.blit(text_surface, text_surface.get_rect(center=play_rect.center))
+
+            # Draw volume slider
+            try:
+                # track
+                pygame.draw.rect(screen, (80, 80, 80), track_rect, border_radius=6)
+                pygame.draw.rect(screen, (200, 200, 200), track_rect, 2, border_radius=6)
+                # knob
+                pygame.draw.circle(screen, (220, 220, 220), knob_rect.center, knob_radius)
+                pygame.draw.circle(screen, (40, 40, 40), knob_rect.center, knob_radius, 2)
+                # label and percent
+                label = game_config.slider_font.render("Music Volume", True, (200, 200, 200))
+                screen.blit(label, (slider_x, slider_y - 28))
+                pct = int(game_config.MUSIC_VOLUME * 100)
+                pct_surf = game_config.slider_font.render(f"{pct}%", True, (200, 200, 200))
+                screen.blit(pct_surf, (slider_x + slider_track_w + 12, slider_y - 12))
+            except Exception:
+                pass
 
             pygame.display.flip()
             clock.tick(30)
